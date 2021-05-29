@@ -211,8 +211,8 @@ indices = torch.randperm(len(dataset)).tolist()
 dataset_train = torch.utils.data.Subset(dataset, indices[:-2000])
 dataset_test = torch.utils.data.Subset(dataset, indices[-2000:])
 
-data_loader = torch.utils.data.DataLoader( dataset_train, batch_size=2, shuffle=True, num_workers=4, collate_fn = UUU.collate_fn)
-data_loader_test = torch.utils.data.DataLoader( dataset_test, batch_size=2, shuffle=True, num_workers=4, collate_fn = UUU.collate_fn)
+data_loader = torch.utils.data.DataLoader( dataset_train, batch_size=2, shuffle=True, num_workers=4, collate_fn = utils.collate_fn)
+data_loader_test = torch.utils.data.DataLoader( dataset_test, batch_size=2, shuffle=True, num_workers=4, collate_fn = utils.collate_fn)
 
 model = FasterRCNN_model_setting()
 model.to(device)
