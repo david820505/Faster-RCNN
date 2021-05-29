@@ -43,23 +43,42 @@ def changeAnnotation(x):
 
 
 #function to read data from csv
-def csvToDf(path):
+def csvToDf_test(path="gdrive/MyDrive/proj/Annotations/Annotations"):
+  ds_path1 = os.path.join(path, "daySequence1", "frameAnnotationsBOX.csv")
+  ds_path2 = os.path.join(path, "daySequence2","frameAnnotationsBOX.csv")
+
+  df_1 = pd.read_csv(ds_path1, sep=";") 
+  df_2 = pd.read_csv(ds_path2, sep=";")
+  ds = df_1.append(df_2)
+
+  ds = df_process(ds)
+
+  return ds
+
+def csvToDf_train(path="gdrive/MyDrive/proj/Annotations/Annotations"):
   #readcsv
-  data = []
-  for clipName in tqdm(sorted(os.listdir(path))):
-    if 'dayClip' not in clipName:
-      continue
-    df = pd.read_csv(os.path.join(path,clipName,'frameAnnotationsBOX.csv'),sep=';')
-    data.append(df)
+  day_clip_path = os.path.join(path, "dayTrain")
   
+  data = []
+  for clip_name in tqdm(sorted(os.listdir(day_clip_path))):
+    if 'dayClip' not in clip_name:
+      continue
+    df = pd.read_csv(os.path.join(day_clip_path, clip_name,'frameAnnotationsBOX.csv'), sep=";")
+    data.append(df)
   #Build df
-  df = pd.concat(data,axis = 0)
+  df = pd.concat(data,axis = 0,)
+
+  df = df_process(df)
+
+  return df
+
+def df_process(df):
   df['isNight'] = 0
 
   # Droppin duplicate columns & "Origin file" as we don't need it
   df = df.drop(['Origin file','Origin track frame number','Origin track'],axis=1)
   
-  # Apply changeFilename
+  # # Apply changeFilename
   df['Filename'] = df.apply(changeFilename,axis=1)
   
   # Apply changeAnnotation
