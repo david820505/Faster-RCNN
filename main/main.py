@@ -55,9 +55,9 @@ def csvToDf_test(path="gdrive/MyDrive/proj/Annotations/Annotations"):
 
   return ds
 
-def csvToDf_train(path="gdrive/MyDrive/proj/Annotations/Annotations"):
+def csvToDf_train(path="gdrive/MyDrive/proj/Annotations/Annotations/dayTrain"):
   #readcsv
-  day_clip_path = os.path.join(path, "dayTrain")
+  day_clip_path = path
   
   data = []
   for clip_name in tqdm(sorted(os.listdir(day_clip_path))):
@@ -114,7 +114,7 @@ class TrafficLightDataset(object):
         #self.imgs = list(sorted(os.listdir(os.path.join(root, "PNGImages"))))
         #self.masks = list(sorted(os.listdir(os.path.join(root, "PedMasks"))))
         # load all image paths
-        day_df = csvToDf(root)
+        day_df = csvToDf_train(root)
         self.imgs = imgsPath(day_df)
         self.xmin,self.ymin,self.xmax,self.ymax = locBox(day_df)
         self.label = label(day_df)
