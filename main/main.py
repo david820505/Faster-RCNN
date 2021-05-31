@@ -66,7 +66,7 @@ def csvToDf_train(path="gdrive/MyDrive/proj/Annotations/Annotations/dayTrain"):
     df = pd.read_csv(os.path.join(day_clip_path, clip_name,'frameAnnotationsBOX.csv'), sep=";")
     data.append(df)
   #Build df
-  df = pd.concat(data,axis = 0,)
+  df = pd.concat(data,axis = 0)
 
   df = df_process(df)
 
@@ -94,7 +94,8 @@ def label(df):
   return label_list
 
 def imgsPath(df):
-  imgs_list = df['image_id'].tolist()
+  imgs_list = df['image_id'].unique()
+  print("image list:", imgs_list)
   return imgs_list
 
 def locBox(df):
@@ -102,7 +103,7 @@ def locBox(df):
   ymin = df['y_min'].tolist()
   xmax = df['x_max'].tolist()
   ymax = df['y_max'].tolist()
-
+  #print("Length:", len(xmin))
   return xmin,ymin,xmax,ymax
   
 class TrafficLightDataset(object):
