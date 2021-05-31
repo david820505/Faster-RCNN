@@ -109,51 +109,47 @@ class TrafficLightDataset(object):
     def __init__(self, root, transforms):
         self.root = root
         self.transforms = transforms
-        # load all image files, sorting them to
-        # ensure that they are aligned
-        #self.imgs = list(sorted(os.listdir(os.path.join(root, "PNGImages"))))
-        #self.masks = list(sorted(os.listdir(os.path.join(root, "PedMasks"))))
         # load all image paths
-        day_df = csvToDf_train(root)
+        day_df = csvToDf(root)
         self.imgs = imgsPath(day_df)
-        self.xmin,self.ymin,self.xmax,self.ymax = locBox(day_df)
-        self.label = label(day_df)
+        self.df = day_df
 
+    def __len__(self) -> int:
+        #print("imgs shape: ", self.imgs.shape[0])
+        return self.imgs.shape[0]
 
     def __getitem__(self, idx):
         # load images
         #img_path = os.path.join(self.root, "PNGImages", self.imgs[idx])
         img_path = self.imgs[idx]
         img = Image.open(img_path).convert("RGB")
-        
+
         # get bounding box coordinates for each images
-        xmin = self.xmin[idx]
-        ymin = self.ymin[idx]
-        xmax = self.xmax[idx]
-        ymax = self.ymax[idx]
-        boxes=[[xmin, ymin, xmax, ymax]]
+        records = self.df[self.df.image_id == img_path]
+        
+        boxes = records[['x_min','y_min','x_max','y_max']].values
+        boxes = torch.as_tensor(boxes,dtype=torch.float32)
         # convert everything into a torch.Tensor
         boxes = torch.as_tensor(boxes, dtype=torch.float32)
-        # convert label to labels
-        label = self.label[idx]
-        labels = torch.as_tensor([label], dtype=torch.int64)
-        # convert idx to image_id
-        image_id = torch.tensor([idx])
         area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
+        area = torch.as_tensor(area, dtype=torch.float32)
 
+        labels = torch.as_tensor(records.label.values, dtype=torch.int64)
+        
+        iscrowd = torch.zeros_like(labels, dtype=torch.int64)
+
+        #print("Path: ", img_path, "labels:", labels, "boxes: ", boxes)
         target = {}
         target["boxes"] = boxes
         target["labels"] = labels
-        target["image_id"] = image_id
+        target["image_id"] = torch.tensor([idx])
         target["area"] = area
+        target['iscrowd'] = iscrowd
 
         if self.transforms is not None:
             img, target = self.transforms(img, target)
 
         return img, target
-
-    def __len__(self):
-        return len(self.imgs)
 
 def get_transform(train):
     transforms = []
