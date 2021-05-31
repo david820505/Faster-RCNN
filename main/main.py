@@ -110,7 +110,7 @@ class TrafficLightDataset(object):
         self.root = root
         self.transforms = transforms
         # load all image paths
-        day_df = csvToDf(root)
+        day_df = csvToDf_train(root)
         self.imgs = imgsPath(day_df)
         self.df = day_df
 
