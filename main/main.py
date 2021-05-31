@@ -199,6 +199,16 @@ def FasterRCNN_model_setting():
 #======================================================================================================================================
 #     Main
 #======================================================================================================================================
+bs  = 4
+nw = 4
+ep = 0
+# SGD setting
+learn = 0.005
+mom = 0.9
+wd = 0.0005
+#file name
+filename = 'SGD_lr' + str(learn) + '_mom' + str(mom) + '_wd' + str(wd) + '_b' + str(bs) + '_n' + str(nw) + '_ep' + str(ep)
+print("filename: ", filename)
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
 # split the dataset in train and test set
@@ -208,27 +218,50 @@ indices = torch.randperm(len(dataset)).tolist()
 dataset_train = torch.utils.data.Subset(dataset, indices[:-2000])
 dataset_test = torch.utils.data.Subset(dataset, indices[-2000:])
 
-data_loader = torch.utils.data.DataLoader( dataset_train, batch_size=2, shuffle=True, num_workers=4, collate_fn = utils.collate_fn)
-data_loader_test = torch.utils.data.DataLoader( dataset_test, batch_size=2, shuffle=True, num_workers=4, collate_fn = utils.collate_fn)
+data_loader = torch.utils.data.DataLoader( dataset_train, batch_size=bs, shuffle=True, num_workers=nw, collate_fn = utils.collate_fn)
+data_loader_test = torch.utils.data.DataLoader( dataset_test, batch_size=bs, shuffle=True, num_workers=nw, collate_fn = utils.collate_fn)
 
 model = FasterRCNN_model_setting()
 model.to(device)
 
+if os.path.exists("gdrive/MyDrive/proj/"+filename+".pth"):
+  model_fn = torch.load("gdrive/MyDrive/proj/"+filename+".pth")
+  model.load_state_dict(model_fn)
+
 # construct an optimizer
-params = [p for p in model.parameters() if p.requires_grad]
-optimizer = torch.optim.SGD(params, lr=0.005, momentum=0.9, weight_decay=0.0005)
+optimizer = torch.optim.SGD(model.parameters(), lr = learn, momentum = mom, weight_decay = wd)
 
 # and a learning rate scheduler
 lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
 
+
 # let's train it for 10 epochs
-num_epochs = 10
+num_epochs = 1
+result = 0
 for epoch in range(num_epochs):
   # train for one epoch, printing every 10 iterations
   train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
   # update the learning rate
   lr_scheduler.step()
   # evaluate on the test dataset
-  evaluate(model, data_loader_test, device=device)
+  result = evaluate(model, data_loader_test, device=device)
 
-print("We made it!")
+tmp = 0
+for iou_type, coco_eval in result.coco_eval.items():
+  tmp = tuple(coco_eval.stats)
+  print(tmp)
+outputdf = pd.DataFrame([tmp], columns=('Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ]', \
+                                      'Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ]', \
+                                      'Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=100 ]', \
+                                      'Average Precision  (AP) @[ IoU=0.50:0.95 | area= small | maxDets=100 ]', \
+                                      'Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ]', \
+                                      'Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets=100 ]', \
+                                      'Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=  1 ]', \
+                                      'Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 10 ]', \
+                                      'Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ]', \
+                                      'Average Recall     (AR) @[ IoU=0.50:0.95 | area= small | maxDets=100 ]', \
+                                      'Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ]', \
+                                      'Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ]') \
+                                      )
+outputdf.to_csv('gdrive/MyDrive/proj/' + filename + '.csv', index=False)
+torch.save(model.state_dict(), "gdrive/MyDrive/proj/"+ filename +".pth")
