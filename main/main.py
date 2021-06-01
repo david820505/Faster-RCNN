@@ -15,23 +15,33 @@ from torchvision.models.detection.rpn import AnchorGenerator
 from engine import train_one_epoch, evaluate
 import utils
 
-DAY_TRAIN_PATH = 'gdrive/MyDrive/proj/Annotations/Annotations/dayTrain/'
-NIGHT_TRAIN_PATH = 'gdrive/MyDrive/proj/Annotations/Annotations/nightTrain/'
+TRAIN_PATH = 'gdrive/MyDrive/proj/Annotations/Annotations/'
 DATA_PATH = 'gdrive/MyDrive/proj'
 label_to_index = {'go':1,'warning':2,'stop':3}
 idx_to_label = {v:k for k,v in label_to_index.items()}
 
-def changeFilename(x):
+
+def changeFilename_train(x):
   filename = x.Filename
   isNight = x.isNight
     
   splitted = filename.split('/')
   clipName = splitted[-1].split('--')[0]
+
   if isNight:
     return os.path.join(DATA_PATH,f'nightTrain/nightTrain/{clipName}/frames/{splitted[-1]}')
   else:
-    return os.path.join(DATA_PATH,f'dayTrain/dayTrain/{clipName}/frames/{splitted[-1]}')
+    return os.path.join(DATA_PATH,f'dayTrain/dayTrain/{clipName}/frames/{splitted[-1]}')    
 
+def changeFilename_test(x, index=1):
+  filename = x.Filename
+  isNight = x.isNight
+  splitted = filename.split('/')
+
+  if isNight:
+    return os.path.join(DATA_PATH,f'nightSequence{index}/nightSequence{index}/frames/{splitted[-1]}')
+  else:
+    return os.path.join(DATA_PATH,f'daySequence{index}/daySequence{index}/frames/{splitted[-1]}')
 
 def changeAnnotation(x):
   if 'go' in x['Annotation tag']:
@@ -44,43 +54,93 @@ def changeAnnotation(x):
 
 #function to read data from csv
 def csvToDf_test(path="gdrive/MyDrive/proj/Annotations/Annotations"):
+
+  #process day_seqence
   ds_path1 = os.path.join(path, "daySequence1", "frameAnnotationsBOX.csv")
   ds_path2 = os.path.join(path, "daySequence2","frameAnnotationsBOX.csv")
 
   df_1 = pd.read_csv(ds_path1, sep=";") 
+  df_1 = df_process_test(df_1, 0, index= 1)
+
   df_2 = pd.read_csv(ds_path2, sep=";")
-  ds = df_1.append(df_2)
+  df_2 = df_process_test(df_2, 0, index= 2)
 
-  ds = df_process(ds)
-
-  return ds
-
-def csvToDf_train(path="gdrive/MyDrive/proj/Annotations/Annotations/dayTrain"):
-  #readcsv
-  day_clip_path = path
+  ds = pd.concat([df_1, df_2], axis = 0)
   
+  #process night_seqence
+  ns_path1 = os.path.join(path, "nightSequence1", "frameAnnotationsBOX.csv")
+  ns_path2 = os.path.join(path, "nightSequence2","frameAnnotationsBOX.csv")
+  
+  df_1 = pd.read_csv(ns_path1, sep=";") 
+  df_1 = df_process_test(df_1, 1, index= 1)
+
+  df_2 = pd.read_csv(ns_path2, sep=";")
+  df_2 = df_process_test(df_2, 1, index= 2)
+
+  #concat day_seqence and night_seqence
+  ns = pd.concat([df_1, df_2], axis = 0)
+
+  df = pd.concat([ds, ns], axis = 0)
+
+  return df
+
+def csvToDf_train(path="gdrive/MyDrive/proj/Annotations/Annotations"):
+  #readcsv
   data = []
+
+  day_clip_path = os.path.join(path, "dayTrain")
   for clip_name in tqdm(sorted(os.listdir(day_clip_path))):
     if 'dayClip' not in clip_name:
       continue
     df = pd.read_csv(os.path.join(day_clip_path, clip_name,'frameAnnotationsBOX.csv'), sep=";")
     data.append(df)
-  #Build df
-  df = pd.concat(data,axis = 0)
 
-  df = df_process(df)
+  #Build df
+  day_df = pd.concat(data, axis = 0)
+  day_df = df_process_train(day_df, 0)
+
+  data = []
+  night_clip_path = os.path.join(path, "nightTrain")
+  for clip_name in tqdm(sorted(os.listdir(night_clip_path))):
+    if 'nightClip' not in clip_name:
+      continue
+    df = pd.read_csv(os.path.join(night_clip_path, clip_name,'frameAnnotationsBOX.csv'), sep=";")
+    data.append(df)
+  
+  #Build df
+  night_df = pd.concat(data, axis = 0)
+  night_df = df_process_train(night_df, 1)
+
+  df = pd.concat([day_df, night_df], axis = 0)
 
   return df
 
-def df_process(df):
-  df['isNight'] = 0
+def df_process_test(df, is_night = 0, index= 1):
+  df['isNight'] = is_night
 
   # Droppin duplicate columns & "Origin file" as we don't need it
   df = df.drop(['Origin file','Origin track frame number','Origin track'],axis=1)
   
-  # # Apply changeFilename
-  df['Filename'] = df.apply(changeFilename,axis=1)
+  # Apply changeFilename
+  df['Filename'] = df.apply(changeFilename_test, axis=1, **{'index': index})
+
+  # Apply changeAnnotation
+  df['Annotation tag'] = df.apply(changeAnnotation,axis = 1)
+
+  # Changing Column Names
+  df.columns = ['image_id','label','x_min','y_min','x_max','y_max','frame','isNight']
+
+  return df
+
+def df_process_train(df, is_night = 0, index= "train"):
+  df['isNight'] = is_night
+
+  # Droppin duplicate columns & "Origin file" as we don't need it
+  df = df.drop(['Origin file','Origin track frame number','Origin track'],axis=1)
   
+  # Apply changeFilename
+  df['Filename'] = df.apply(changeFilename_train, axis=1)
+
   # Apply changeAnnotation
   df['Annotation tag'] = df.apply(changeAnnotation,axis = 1)
 
@@ -105,7 +165,54 @@ def locBox(df):
   ymax = df['y_max'].tolist()
   #print("Length:", len(xmin))
   return xmin,ymin,xmax,ymax
-  
+
+class TrafficLightDataset_test(object): 
+    def __init__(self, root, transforms):
+        self.root = root
+        self.transforms = transforms
+        # load all image paths
+        df = csvToDf_test(root)
+        
+        self.imgs = imgsPath(df)
+        self.df = df
+
+    def __len__(self) -> int:
+        print("imgs shape: ", self.imgs.shape[0])
+        return self.imgs.shape[0]
+
+    def __getitem__(self, idx):
+        # load images
+        #img_path = os.path.join(self.root, "PNGImages", self.imgs[idx])
+        img_path = self.imgs[idx]
+        img = Image.open(img_path).convert("RGB")
+
+        # get bounding box coordinates for each images
+        records = self.df[self.df.image_id == img_path]
+        
+        boxes = records[['x_min','y_min','x_max','y_max']].values
+        boxes = torch.as_tensor(boxes,dtype=torch.float32)
+        # convert everything into a torch.Tensor
+        boxes = torch.as_tensor(boxes, dtype=torch.float32)
+        area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
+        area = torch.as_tensor(area, dtype=torch.float32)
+
+        labels = torch.as_tensor(records.label.values, dtype=torch.int64)
+        
+        iscrowd = torch.zeros_like(labels, dtype=torch.int64)
+
+        # print("Path: ", img_path, "labels:", labels, "boxes: ", boxes)
+        target = {}
+        target["boxes"] = boxes
+        target["labels"] = labels
+        target["image_id"] = torch.tensor([idx])
+        target["area"] = area
+        target['iscrowd'] = iscrowd
+
+        if self.transforms is not None:
+            img, target = self.transforms(img, target)
+
+        return img, target
+
 class TrafficLightDataset(object):
     def __init__(self, root, transforms):
         self.root = root
@@ -152,6 +259,7 @@ class TrafficLightDataset(object):
 
         return img, target
 
+        
 def get_transform(train):
     transforms = []
     # converts the image, a PIL image, into a PyTorch Tensor
@@ -212,17 +320,23 @@ print("filename: ", filename)
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
 # split the dataset in train and test set
-dataset = TrafficLightDataset(DAY_TRAIN_PATH, get_transform(train=True))
-
+dataset = TrafficLightDataset(TRAIN_PATH, get_transform(train=True))
 indices = torch.randperm(len(dataset)).tolist()
-dataset_train = torch.utils.data.Subset(dataset, indices[:-2000])
-dataset_test = torch.utils.data.Subset(dataset, indices[-2000:])
 
-data_loader = torch.utils.data.DataLoader( dataset_train, batch_size=bs, shuffle=True, num_workers=nw, collate_fn = utils.collate_fn)
-data_loader_test = torch.utils.data.DataLoader( dataset_test, batch_size=bs, shuffle=True, num_workers=nw, collate_fn = utils.collate_fn)
+dataset_train = torch.utils.data.Subset(dataset, indices[:500])
+dataset_val = torch.utils.data.Subset(dataset, indices[:500])
+
+data_loader = torch.utils.data.DataLoader( dataset_train, batch_size=4, shuffle=True, num_workers=4, collate_fn = utils.collate_fn)
+data_loader_val = torch.utils.data.DataLoader( dataset_val, batch_size=4, shuffle=True, num_workers=4, collate_fn = utils.collate_fn)
 
 model = FasterRCNN_model_setting()
 model.to(device)
+
+# test of data_loader
+# dataset = TrafficLightDataset_test(TRAIN_PATH, get_transform(train=True))
+# indices = torch.randperm(len(dataset)).tolist()
+# dataset_test = torch.utils.data.Subset(dataset, indices[:500])
+# data_loader_test = torch.utils.data.DataLoader( dataset_test, batch_size=4, shuffle=True, num_workers=4, collate_fn = utils.collate_fn)
 
 if os.path.exists("gdrive/MyDrive/proj/"+filename+".pth"):
   model_fn = torch.load("gdrive/MyDrive/proj/"+filename+".pth")
