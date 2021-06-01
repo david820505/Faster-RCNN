@@ -358,7 +358,7 @@ for epoch in range(num_epochs):
   # update the learning rate
   lr_scheduler.step()
   # evaluate on the test dataset
-  result = evaluate(model, data_loader_test, device=device)
+  result = evaluate(model, data_loader_val, device=device)
 
 tmp = 0
 for iou_type, coco_eval in result.coco_eval.items():
