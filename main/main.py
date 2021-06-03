@@ -1,7 +1,6 @@
 # Import dependencies
 import os
 import numpy as np
-import torch
 from PIL import Image
 from tqdm import tqdm
 import pandas as pd
@@ -271,7 +270,7 @@ def get_transform(train):
 
 def FasterRCNN_model_setting():
   # load a model pre-trained pre-trained on COCO
-  model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
+  model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_320_fpn(pretrained=True)
   # replace the classifier with a new one, that has
   # num_classes which is user-defined
   num_classes = 4  # 3 class (3 diff. lights) + background
@@ -309,25 +308,24 @@ def FasterRCNN_model_setting():
 #======================================================================================================================================
 bs  = 4
 nw = 4
-ep = 0
-# SGD setting
-learn = 0.005
-mom = 0.9
-wd = 0.0005
+# optimizer setting
+learn = 1e-06
+mom = 0
+wd = 0
 #file name
-filename = 'SGD_lr' + str(learn) + '_mom' + str(mom) + '_wd' + str(wd) + '_b' + str(bs) + '_n' + str(nw) + '_ep' + str(ep)
+filename = 'SGDprop_lr' + str(learn) + '_mom' + str(mom) + '_wd' + str(wd) + '_b' + str(bs) + '_n' + str(nw)
 print("filename: ", filename)
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
 # split the dataset in train and test set
 dataset = TrafficLightDataset(TRAIN_PATH, get_transform(train=True))
 indices = torch.randperm(len(dataset)).tolist()
+print(len(indices))
+dataset_train = torch.utils.data.Subset(dataset, indices[:-3000])
+dataset_val = torch.utils.data.Subset(dataset, indices[-3000:])
 
-dataset_train = torch.utils.data.Subset(dataset, indices[:2000])
-dataset_val = torch.utils.data.Subset(dataset, indices[-500:])
-
-data_loader = torch.utils.data.DataLoader( dataset_train, batch_size=4, shuffle=True, num_workers=4, collate_fn = utils.collate_fn)
-data_loader_val = torch.utils.data.DataLoader( dataset_val, batch_size=4, shuffle=True, num_workers=4, collate_fn = utils.collate_fn)
+data_loader = torch.utils.data.DataLoader( dataset_train, batch_size=bs, shuffle=True, num_workers=nw, collate_fn = utils.collate_fn)
+data_loader_val = torch.utils.data.DataLoader( dataset_val, batch_size=bs, shuffle=True, num_workers=nw, collate_fn = utils.collate_fn)
 
 model = FasterRCNN_model_setting()
 model.to(device)
@@ -341,6 +339,7 @@ model.to(device)
 if os.path.exists("gdrive/MyDrive/proj/"+filename+".pth"):
   model_fn = torch.load("gdrive/MyDrive/proj/"+filename+".pth")
   model.load_state_dict(model_fn)
+  print("Load the previous trained weight")
 
 # construct an optimizer
 optimizer = torch.optim.SGD(model.parameters(), lr = learn, momentum = mom, weight_decay = wd)
@@ -348,10 +347,16 @@ optimizer = torch.optim.SGD(model.parameters(), lr = learn, momentum = mom, weig
 # and a learning rate scheduler
 lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
 
-
 # let's train it for 10 epochs
-num_epochs = 1
+num_epochs = 2
 result = 0
+curr_list = []
+PreviousData = None
+
+if os.path.exists("gdrive/MyDrive/proj/"+filename+".csv"):
+  PreviousData = pd.read_csv("gdrive/MyDrive/proj/"+filename+".csv")
+  print("Load the previous data:", PreviousData)
+
 for epoch in range(num_epochs):
   # train for one epoch, printing every 10 iterations
   train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
@@ -359,12 +364,13 @@ for epoch in range(num_epochs):
   lr_scheduler.step()
   # evaluate on the test dataset
   result = evaluate(model, data_loader_val, device=device)
+  tmp = 0
+  for iou_type, coco_eval in result.coco_eval.items():
+    tmp = list(coco_eval.stats)
+    print(tmp) 
+  curr_list.append(tmp)
 
-tmp = 0
-for iou_type, coco_eval in result.coco_eval.items():
-  tmp = tuple(coco_eval.stats)
-  print(tmp)
-outputdf = pd.DataFrame([tmp], columns=('Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ]', \
+outputdf = pd.DataFrame(curr_list, columns=('Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ]', \
                                       'Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ]', \
                                       'Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=100 ]', \
                                       'Average Precision  (AP) @[ IoU=0.50:0.95 | area= small | maxDets=100 ]', \
@@ -377,5 +383,10 @@ outputdf = pd.DataFrame([tmp], columns=('Average Precision  (AP) @[ IoU=0.50:0.9
                                       'Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ]', \
                                       'Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ]') \
                                       )
+if isinstance(PreviousData, pd.DataFrame):
+  print("Before Append the data", outputdf)
+  outputdf = PreviousData.append(outputdf)
+  print("After Append the data", outputdf)
+
 outputdf.to_csv('gdrive/MyDrive/proj/' + filename + '.csv', index=False)
 torch.save(model.state_dict(), "gdrive/MyDrive/proj/"+ filename +".pth")
