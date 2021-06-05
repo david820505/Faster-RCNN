@@ -269,8 +269,9 @@ def get_transform(train):
     return T.Compose(transforms)
 
 def FasterRCNN_model_setting():
+  '''
   # load a model pre-trained pre-trained on COCO
-  model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_320_fpn(pretrained=True)
+  model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
   # replace the classifier with a new one, that has
   # num_classes which is user-defined
   num_classes = 4  # 3 class (3 diff. lights) + background
@@ -278,6 +279,7 @@ def FasterRCNN_model_setting():
   in_features = model.roi_heads.box_predictor.cls_score.in_features
   # replace the pre-trained head with a new one
   model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
+  '''
   # load a pre-trained model for classification and return
   # only the features
   backbone = torchvision.models.mobilenet_v2(pretrained=True).features
@@ -301,6 +303,10 @@ def FasterRCNN_model_setting():
   # OrderedDict[Tensor], and in featmap_names you can choose which
   # feature maps to use.
   roi_pooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=['0'], output_size=7, sampling_ratio=2)
+  model = FasterRCNN(backbone,
+                   num_classes = 4,
+                   rpn_anchor_generator=anchor_generator,
+                   box_roi_pool=roi_pooler)
   return model
 
 #======================================================================================================================================
