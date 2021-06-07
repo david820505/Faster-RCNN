@@ -241,6 +241,68 @@ def locBox(df):
   #print("Length:", len(xmin))
   return xmin,ymin,xmax,ymax
 
+
+class TrafficLightDataset_test(object): 
+    def __init__(self, root, transforms):
+        self.root = root
+        self.transforms = transforms
+        # load all image paths
+        df = csvToDf_test(root)
+        
+        self.imgs = imgsPath(df)
+        self.df = df
+
+    def __len__(self) -> int:
+        print("imgs shape: ", self.imgs.shape[0])
+        return self.imgs.shape[0]
+
+    def __getitem__(self, idx):
+        # load images
+        #img_path = os.path.join(self.root, "PNGImages", self.imgs[idx])
+        img_path = self.imgs[idx]
+        #img = Image.open(img_path).convert("RGB")
+        image = cv2.imread(img_path)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB).astype(np.float32)
+        image /= 255.0
+
+        # get bounding box coordinates for each images
+        records = self.df[self.df.image_id == img_path]
+        
+        boxes = records[['x_min','y_min','x_max','y_max']].values
+        boxes = torch.as_tensor(boxes,dtype=torch.float32)
+        # convert everything into a torch.Tensor
+        
+        area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
+        area = torch.as_tensor(area, dtype=torch.float32)
+
+        labels = torch.as_tensor(records.label.values, dtype=torch.int64)
+        
+        iscrowd = torch.zeros_like(labels, dtype=torch.int64)
+
+        # print("Path: ", img_path, "labels:", labels, "boxes: ", boxes)
+        target = {}
+        target["boxes"] = boxes
+        target["labels"] = labels
+        target["image_id"] = torch.tensor([idx])
+        target["area"] = area
+        target['iscrowd'] = iscrowd
+
+        if self.transforms:
+          sample = {
+              'image': image,
+              'bboxes': target['boxes'],
+              'labels': labels
+          }
+          sample = self.transforms(**sample)
+          image = sample['image']
+            
+          # target['boxes'] = torch.stack(tuple(map(torch.tensor, zip(*sample['bboxes'])))).permute(1, 0)
+          target['boxes'] = torch.as_tensor(sample['bboxes'],dtype=torch.float32)
+          target['labels'] = torch.as_tensor(sample['labels'])  
+
+        return image, target,img_path
+
+
 class TrafficLightDataset(object):
     def __init__(self, root, transforms):
         self.root = root
@@ -386,6 +448,7 @@ device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cp
 # split the dataset in train and test set
 #dataset = TrafficLightDataset(TRAIN_PATH, get_transform(train=True))
 dataset = TrafficLightDataset(TRAIN_PATH, getTrainTransform())
+testDataset = TrafficLightDataset_test(TRAIN_PATH,getTestTransform())
 
 indices = torch.randperm(len(dataset)).tolist()
 
@@ -398,10 +461,12 @@ dataset_val = torch.utils.data.Subset(dataset, indices[-part3:])#-part3
 
 data_loader = torch.utils.data.DataLoader( dataset_train, batch_size=bs, shuffle=True, num_workers=nw, collate_fn = utils.collate_fn)
 data_loader_val = torch.utils.data.DataLoader( dataset_val, batch_size=bs, shuffle=True, num_workers=nw, collate_fn = utils.collate_fn)
+data_loader_test = torch.utils.data.DataLoader(testDataset,batch_size=bs, shuffle=True, num_workers=nw, collate_fn = utils.collate_fn)
 
+
+
+#Sample test
 images, targets, image_ids = next(iter(data_loader))
-
-#Sample testt
 boxes = targets[0]['boxes'].cpu().numpy().astype(np.int32)
 image = images[0].permute(1,2,0).cpu().numpy()
 
@@ -419,9 +484,11 @@ def displayImage(image, boxes):
 displayImage(image,boxes)
 
 
+#Start training model
 model = FasterRCNN_model_setting()
 model.to(device)
 
+#Loading model
 if os.path.exists("gdrive/MyDrive/proj/"+filename+".pth"):
   model_fn = torch.load("gdrive/MyDrive/proj/"+filename+".pth")
   model.load_state_dict(model_fn)
@@ -444,13 +511,15 @@ for epoch in range(num_epochs):
   result = evaluate(model, data_loader_val, device=device)
   #print("I am Coco:",result)
 
+
+#Start testing model
 model.eval()
-images, targets, image_ids = next(iter(data_loader_val))
+images, targets, image_ids = next(iter(data_loader_test))
 images = torch.stack(images).to(device)
 
 outputs = model(images)
 
-
+#Show Image functions
 def filterBoxes(output,nms_th=0.3,score_threshold=0.5):
     
     boxes = output['boxes']
@@ -503,5 +572,19 @@ def displayPredictions(image_id,output,nms_th=0.3,score_threshold=0.5):
 
     plt.show()
 
+
+#Show original photo
+from google.colab.patches import cv2_imshow
+image_t = cv2.imread(image_ids[0])
+image_t = cv2.cvtColor(image_t, cv2.COLOR_BGR2RGB).astype(np.float32)
+image_t = cv2.resize(image_t,(512,512))
+image_t /= 255.0
+fig, ax = plt.subplots(1, 1, figsize=(16, 8))
+ax.set_axis_off()
+ax.imshow(image_t)
+
+
+
+#Display image with boxes
 displayPredictions(image_ids[0],outputs[0],0.2,0.4)
 
