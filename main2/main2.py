@@ -502,6 +502,15 @@ lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1
 # let's train it for 10 epochs
 num_epochs = 10
 result = 0
+curr_list = []
+PreviousData = None
+
+if os.path.exists("gdrive/MyDrive/proj/"+filename+".csv"):
+  PreviousData = pd.read_csv("gdrive/MyDrive/proj/"+filename+".csv")
+  print("Load the previous data:", PreviousData)
+
+
+
 for epoch in range(num_epochs):
   # train for one epoch, printing every 10 iterations
   train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
@@ -510,8 +519,39 @@ for epoch in range(num_epochs):
   # evaluate on the test dataset
   result = evaluate(model, data_loader_val, device=device)
   #print("I am Coco:",result)
+  tmp = 0
+  for iou_type, coco_eval in result.coco_eval.items():
+    tmp = list(coco_eval.stats)
+    print(tmp) 
+  curr_list.append(tmp)
 
 
+  
+outputdf = pd.DataFrame(curr_list, columns=('Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ]', \
+                                      'Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ]', \
+                                      'Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=100 ]', \
+                                      'Average Precision  (AP) @[ IoU=0.50:0.95 | area= small | maxDets=100 ]', \
+                                      'Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ]', \
+                                      'Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets=100 ]', \
+                                      'Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=  1 ]', \
+                                      'Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 10 ]', \
+                                      'Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ]', \
+                                      'Average Recall     (AR) @[ IoU=0.50:0.95 | area= small | maxDets=100 ]', \
+                                      'Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ]', \
+                                      'Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ]') \
+                                      )
+if isinstance(PreviousData, pd.DataFrame):
+  print("Before Append the data", outputdf)
+  outputdf = PreviousData.append(outputdf)
+  print("After Append the data", outputdf)
+
+outputdf.to_csv('gdrive/MyDrive/proj/' + filename + '.csv', index=False)
+torch.save(model.state_dict(), "gdrive/MyDrive/proj/"+ filename +".pth")
+
+
+  
+  
+  
 #Start testing model
 model.eval()
 images, targets, image_ids = next(iter(data_loader_test))
